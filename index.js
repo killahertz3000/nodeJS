@@ -1,43 +1,110 @@
-const EventEmitter = require('events'),
-    emitter = new EventEmitter();
-require('moment-precise-range-plugin');
-const moment = require('moment');
+/**
+ Формат hh:mm:ss-dd-mm-yyyy
+ **/
 
-const [userPastDate] = process.argv.slice(2);
-const format = 'YYYY-MM-DD HH:mm:ss';
-
-const getDateFromDateString = (dateString) => {
-    const [sec, min, hour, day, month, year] = dateString.split('-');
-    return new Date(Date.UTC(year, month - 1, day, hour, min, sec));
-};
-
-const dateInFuture = getDateFromDateString(userPastDate);
+ const { DateTime } = require('luxon');
+ const EventEmitter = require('events');
 
 
-const showRemainingTime = (dateInFuture) => {
-    const dateNow = new Date();
+ function getDateISOString(date) {
+   const [time, day, month, year] = date.split('-');
+   return `${year}-${month}-${day}T${time}`;
+ }
 
-    if (dateNow >= dateInFuture) {
-        emitter.emit('timerEnd');
-    } else {
-        const currentDateFormatted = moment(dateNow, format);
-        const futureDateFormatted = moment(dateInFuture, format);
-        const diff = moment.preciseDiff(currentDateFormatted, futureDateFormatted);
+ function getDateDifference(date1, date2) {
+   const [start, end] = date1 > date2 ? [date2, date1] : [date1, date2];
+   return end
+     .diff(start, ['years', 'months', 'days', 'hours', 'minutes', 'seconds'])
+     .toObject();
+ }
 
-        console.log(diff);
-    }
-};
+ class Timer extends EventEmitter {
+   _currentTime = null;
 
-const timerId = setInterval(() => {
-    emitter.emit('timerTick', dateInFuture);
-}, 1000)
+   constructor(name, endTime) {
+     super();
+     this.name = name;
+     this.endTime = DateTime.fromISO(endTime);
+   }
 
-const showTimerDone = (timerId) => {
-    clearInterval(timerId);
-    console.log('End');
-};
+   start() {
+     this._timerObj = setInterval(() => {
+       this._currentTime = DateTime.now();
+       if (this.isEnd()) this.stop();
+       else this.tick();
+     }, 1000);
+   }
 
-emitter.on('timerTick', showRemainingTime);
-emitter.on('timerEnd', () => {
-    showTimerDone(timerId);
-});
+   stop() {
+     clearInterval(this._timerObj);
+     this.emit('stop', {
+       [this.name]: `завершен.`,
+     });
+   }
+
+   tick() {
+     const { years, months, days, hours, minutes, seconds } = getDateDifference(
+       this.endTime,
+       this._currentTime
+     );
+     this.emit('tick', {
+       [this.name]:
+         (years > 0 ? `years: ${years}, ` : '') +
+         (months > 0 ? `months: ${months}, ` : '') +
+         (days > 0 ? `days: ${days}, ` : '') +
+         (hours < 10 ? `0${hours}:` : `${hours}:`) +
+         (minutes < 10 ? `0${minutes}:` : `${minutes}:`) +
+         (Math.round(seconds) < 10
+           ? `0${Math.round(seconds)}`
+           : `${Math.round(seconds)}`),
+     });
+   }
+
+   isEnd() {
+     return this._currentTime >= this.endTime;
+   }
+ }
+
+ class TimersList {
+   _timersList = [];
+   _timersState = {};
+
+   constructor(timeStringList) {
+     timeStringList.forEach((timeString, index) => {
+       const timer = new Timer(index + 1, timeString);
+
+       timer.on('tick', (tick) => {
+         this.updateState(tick);
+         this.renderState();
+       });
+       timer.on('stop', (stop) => {
+         this.updateState(stop);
+         this.renderState();
+       });
+
+       this._timersList.push(timer);
+     });
+   }
+
+   startTimers() {
+     this._timersList.forEach((timer) => timer.start());
+   }
+
+   updateState(newState) {
+     this._timersState = { ...this._timersState, ...newState };
+   }
+
+   renderState() {
+     console.clear();
+     Object.keys(this._timersState).forEach((timerName) => {
+       console.log(`Таймер ${timerName}: ${this._timersState[timerName]}`);
+     });
+   }
+ }
+
+ const timeList = process.argv
+   .splice(2)
+   .map((timeString) => getDateISOString(timeString));
+ const timersList = new TimersList(timeList);
+
+ timersList.startTimers();
