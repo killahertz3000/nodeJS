@@ -1,4 +1,4 @@
-// node index.js hh:mm:ss dd-mm-yyyy
+// node index.js hh:mm:ss-dd-mm-yyyy
 
  const { DateTime } = require('luxon');
  const EventEmitter = require('events');
