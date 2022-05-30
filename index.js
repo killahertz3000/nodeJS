@@ -1,53 +1,43 @@
-const colors = require('colors/safe');
+const EventEmitter = require('events'),
+    emitter = new EventEmitter();
+require('moment-precise-range-plugin');
+const moment = require('moment');
 
-try {
-  let [start, end] = process.argv.splice(2, 2).map((string) => Number(string));
+const [userPastDate] = process.argv.slice(2);
+const format = 'YYYY-MM-DD HH:mm:ss';
 
-  if (isNaN(start) || isNaN(end))
-    throw new Error(
-      `Некорректный диапазон значений! start=${start}, end=${end}`
-    );
+const getDateFromDateString = (dateString) => {
+    const [sec, min, hour, day, month, year] = dateString.split('-');
+    return new Date(Date.UTC(year, month - 1, day, hour, min, sec));
+};
 
-  if (start < 0 || end < 0) throw new Error('Отрицательное значение не допустимо!');
+const dateInFuture = getDateFromDateString(userPastDate);
 
-  if (start > end) start = [end, (end = start)][0];
 
-  const numberRange = new Array(end + 1).fill(true, start <= 1 ? 2 : start);
-  const divisor = Math.trunc(Math.sqrt(end));
+const showRemainingTime = (dateInFuture) => {
+    const dateNow = new Date();
 
-  for (let i = 2; i <= divisor; i++) {
-    numberRange.forEach((isPrimeNumber, index, array) => {
-      if (isPrimeNumber && index > i && !(index % i)) {
-        array[index] = false;
-      }
-    });
-  }
+    if (dateNow >= dateInFuture) {
+        emitter.emit('timerEnd');
+    } else {
+        const currentDateFormatted = moment(dateNow, format);
+        const futureDateFormatted = moment(dateInFuture, format);
+        const diff = moment.preciseDiff(currentDateFormatted, futureDateFormatted);
 
-  if (numberRange.find((isPrimeNumber) => isPrimeNumber)) {
-    let colorSwitcher = 1;
+        console.log(diff);
+    }
+};
 
-    numberRange.forEach((isPrimeNumber, number) => {
-      if (isPrimeNumber) {
-        switch (colorSwitcher) {
-          case 1:
-            console.log(colors.yellow(number));
-            colorSwitcher++;
-            break;
-          case 2:
-            console.log(colors.red(number));
-            colorSwitcher++;
-            break;
-          case 3:
-            console.log(colors.green(number));
-            colorSwitcher = 1;
-            break;
-          default:
-        }
-      }
-    });
-  } else {
-    console.log(colors.red('Нет простых чисел!'));
-  }
-} catch (error) {
-  console.warn(colors.red(error.message));
-}
+const timerId = setInterval(() => {
+    emitter.emit('timerTick', dateInFuture);
+}, 1000)
+
+const showTimerDone = (timerId) => {
+    clearInterval(timerId);
+    console.log('End');
+};
+
+emitter.on('timerTick', showRemainingTime);
+emitter.on('timerEnd', () => {
+    showTimerDone(timerId);
+});
