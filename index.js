@@ -1,32 +1,37 @@
 import fs from 'fs';
-import readline from 'readline';
-import { Stream } from 'stream';
-const TEST_FILE = './access_tmp.log';
-//const TRUE_FILE = './access.log';
-let IPs = process.argv.slice(2);
-const newStream = fs.createReadStream(TEST_FILE, 'utf-8');
-const outStream = new Stream();
-const readLineFromStream = readline.createInterface(newStream, outStream);
-const writeStreams = {};
+import path from 'path';
+import http from 'http';
+const HTML_TEMPLATE = './index_template.html';
+const HTML_TO_DISPLAY = path.join(path.resolve(), 'index.html');
 
-if(IPs.length == 0) {
-    IPs = ['89.123.1.41', '34.48.240.111'];
-}
+const isDir = (dirPath) => fs.lstatSync(dirPath).isDirectory();
 
-IPs.forEach((IP) => {
-    writeStreams[IP] = fs.createWriteStream(`${IP}_requests.log`, {
-        encoding: 'utf-8',
-        flags: 'a'
-    });
+http.createServer((req, res) => {
+    const reqPath = path.join(path.resolve(), req.url);
 
-});
+    if (isDir(reqPath)) {
+        const dirContent = fs.readdirSync(reqPath);
+        resultHTML(displayDirContent(req.url, dirContent));
+    } else {
+        resultHTML(fs.readFileSync(reqPath, 'utf-8'));
+    }
 
-readLineFromStream.on('line', (line) => {
-    if(line.length == 0) { return; }
 
-    IPs.forEach((IP) => {
-        if(line.indexOf(IP) !== -1) {
-            writeStreams[IP].write(line + '\n');
-        }
-    });
-});
+    const readStream = fs.createReadStream(HTML_TO_DISPLAY);
+    res.writeHead(200, { 'Content-Type': 'text/html'});
+    readStream.pipe(res);
+}).listen(5555, 'localhost');
+
+const displayDirContent = (currentPath, list) => {
+    let htmlList = '';
+    htmlList += '<ul>';
+    htmlList += list.reduce((list, item) => list+=`<li><a href="${currentPath == '/' ? currentPath + item : currentPath + '/' + item}">${item}</a></li>`, '');
+    htmlList += '</ul>';
+    return htmlList;
+};
+
+const resultHTML = (toPresent) => {
+    let template = fs.readFileSync(HTML_TEMPLATE, 'utf-8');
+    template = template.replace('{{data}}', toPresent);
+    fs.writeFileSync('./index.html', template);
+};
