@@ -1,37 +1,43 @@
+import http from 'http';
+import {Server} from 'socket.io';
 import fs from 'fs';
 import path from 'path';
-import http from 'http';
-const HTML_TEMPLATE = './index_template.html';
-const HTML_TO_DISPLAY = path.join(path.resolve(), 'index.html');
+const HTML_TO_DISPLAY = path.join(path.resolve(), 'chat.html');
 
-const isDir = (dirPath) => fs.lstatSync(dirPath).isDirectory();
-
-http.createServer((req, res) => {
-    const reqPath = path.join(path.resolve(), req.url);
-
-    if (isDir(reqPath)) {
-        const dirContent = fs.readdirSync(reqPath);
-        resultHTML(displayDirContent(req.url, dirContent));
-    } else {
-        resultHTML(fs.readFileSync(reqPath, 'utf-8'));
-    }
-
-
+const server = http.createServer((req, res) => {
     const readStream = fs.createReadStream(HTML_TO_DISPLAY);
     res.writeHead(200, { 'Content-Type': 'text/html'});
     readStream.pipe(res);
-}).listen(5555, 'localhost');
+}).listen(4444, 'localhost');
 
-const displayDirContent = (currentPath, list) => {
-    let htmlList = '';
-    htmlList += '<ul>';
-    htmlList += list.reduce((list, item) => list+=`<li><a href="${currentPath == '/' ? currentPath + item : currentPath + '/' + item}">${item}</a></li>`, '');
-    htmlList += '</ul>';
-    return htmlList;
-};
+const io = new Server(server);
 
-const resultHTML = (toPresent) => {
-    let template = fs.readFileSync(HTML_TEMPLATE, 'utf-8');
-    template = template.replace('{{data}}', toPresent);
-    fs.writeFileSync('./index.html', template);
+io.on('connection', (client) => {
+    const userCount = io.engine.clientsCount;
+    const userName = generateUserName();
+
+    client.broadcast.emit('changeUserCount', userCount);
+    client.emit('changeUserCount', userCount);
+
+    client.emit('setName', userName);
+
+    client.broadcast.emit('addUser', userName);
+
+    client.on('disconnect', () => {
+        client.broadcast.emit('leftUser', userName);
+        client.broadcast.emit('changeUserCount', io.engine.clientsCount);
+    });
+
+    client.on('newMessage', (payload) => {
+        const msg = {
+            user: userName,
+            text: payload
+        };
+        client.broadcast.emit('newChatMessage', msg);
+        client.emit('newChatMessage', msg);
+    });
+});
+
+const generateUserName = () => {
+    return 'user#'+(Date.now()).toString().substr(-5);
 };
